@@ -1,0 +1,11 @@
+*.png
+*.jpg
+*.dat
+*.mp4
+*.avi
+*.pyc
+
+__pycache__
+camera_parameters/*
+frames/*
+videos/*
