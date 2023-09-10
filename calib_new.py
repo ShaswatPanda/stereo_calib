@@ -10,127 +10,11 @@ import imutils
 import atexit
 import time
 from threading import Thread
+from threaded_video import WebcamStream, ThreadedCamera
 
 ip_webcam = False
 #This will contain the calibration settings from the calibration_settings.yaml file
 calibration_settings = {}
-
-class ThreadedCamera(object):
-    def __init__(self, source = 0):
-
-        self.capture = cv2.VideoCapture(source)
-
-        self.thread = Thread(target = self.update, args = ())
-        self.thread.daemon = True
-
-        self.status = False
-        self.frame  = None
-
-    def update(self):
-        while True:
-            if self.capture.isOpened():
-                (self.status, self.frame) = self.capture.read()
-            else:
-                break
-        self.stop()
-
-    def grab_frame(self):
-        return self.status, self.frame
-    
-    def start(self):
-        self.thread.start()
-     
-    def stop(self):
-        print("Stopping stream...")
-        self.capture.release()
-        
-# defining a helper class for implementing multi-threading 
-class WebcamStream :
-    # initialization method 
-    def __init__(self, stream_id=0):
-        self.stream_id = stream_id # default is 0 for main camera 
-        
-        # opening video capture stream 
-        self.capture = cv2.VideoCapture(self.stream_id)
-        if self.capture.isOpened() is False :
-            print("[Exiting]: Error accessing webcam stream.")
-            exit(0)
-        fps_input_stream = int(self.capture.get(5)) # hardware fps
-        print("FPS of input stream: {}".format(fps_input_stream))
-            
-        # reading a single frame from capture stream for initializing 
-        self.grabbed , self.frame = self.capture.read()
-        if self.grabbed is False :
-            print('[Exiting] No more frames to read')
-            exit(0)
-        # self.stopped is initialized to False 
-        self.stopped = True
-        # thread instantiation  
-        self.t = Thread(target=self.update, args=())
-        self.t.daemon = True # daemon threads run in background 
-        
-    # method to start thread 
-    def start(self):
-        self.stopped = False
-        self.t.start()
-    # method passed to thread to read next available frame  
-    def update(self):
-        while True :
-            if self.stopped is True :
-                break
-            self.grabbed , self.frame = self.capture.read()
-            if self.grabbed is False :
-                print('[Exiting] No more frames to read')
-                self.stopped = True
-                break 
-        self.capture.release()
-    # method to return latest read frame 
-    def grab_frame(self):
-        return self.grabbed, self.frame
-    # method to stop reading frames 
-    def stop(self):
-        print(f"Stopping stream {self.stream_id}...")
-        self.stopped = True
-
-class GetCheckerboard():
-    def __init__(self, rows, columns) -> None:
-        self.rows = rows
-        self.columns = columns
-        self.frame_stack = []
-        self.frame = None
-        
-        self.stopped = True
-        self.thread = Thread(target = self.update, args = ())
-        self.thread.daemon = True
-        pass
-    
-    def start(self):
-        self.stopped = False
-        self.t.start()
-    
-    def update(self):
-        while True :
-            if self.stopped is True :
-                break
-            if self.grabbed is False :
-                self.stopped = True
-                break
-            if self.frame_stack:
-                frame = self.frame_stack.pop()
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                ret, corners = cv2.findChessboardCorners(gray, (self.rows, self.columns), None)
-                conv_size = (11, 11)
-                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
-                if ret == True:
-                    corners = cv2.cornerSubPix(gray, corners, conv_size, (-1, -1), criteria)
-                    self.frame = cv2.drawChessboardCorners(frame, (self.rows,self.columns), corners, ret)
-                
-    def get_checkerboard(self, frame):
-        self.frame_stack.append(frame)
-        return self.frame
-
-    def stop(self):
-        self.stopped = True
 
 #Given Projection matrices P1 and P2, and pixel coordinates point1 and point2, return triangulated 3D point.
 def DLT(P1, P2, point1, point2):
@@ -418,8 +302,8 @@ def save_frames_two_cams(camera0_name, camera1_name):
         #     img = cv2.imdecode(img_arr, -1)
         #     ret1, frame1 = True, img
 
-        ret0, frame0 = streamer_left.grab_frame()
-        ret1, frame1 = streamer_right.grab_frame()
+        ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
+        ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
         
         if not (ret0 and ret1):
             print('Cameras not returning video data. Exiting...')
@@ -469,6 +353,7 @@ def save_frames_two_cams(camera0_name, camera1_name):
                 cooldown = cooldown_time
 
         combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))))
+        cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.imshow('img', combined_frame0_frame_1)
         
         frame_number += 1
@@ -478,7 +363,7 @@ def save_frames_two_cams(camera0_name, camera1_name):
             print(f"Real-time FPS: {100/time_taken}")
             t1 = t2
             
-        k = cv2.waitKey(1)
+        k = cv2.waitKey(100)
         if k == 27:
             quit()  
         if k == ord('q'): # Q
@@ -803,20 +688,20 @@ if __name__ == '__main__':
     parse_calibration_settings_file(sys.argv[1])
 
 
-    """Step1. Save calibration frames for single cameras"""
-    save_frames_single_camera('camera0') #save frames for camera0
-    save_frames_single_camera('camera1') #save frames for camera1
+    # """Step1. Save calibration frames for single cameras"""
+    # save_frames_single_camera('camera0') #save frames for camera0
+    # save_frames_single_camera('camera1') #save frames for camera1
 
 
-    """Step2. Obtain camera intrinsic matrices and save them"""
-    #camera0 intrinsics
-    images_prefix = os.path.join('frames', 'camera0*')
-    cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
-    save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
-    #camera1 intrinsics
-    images_prefix = os.path.join('frames', 'camera1*')
-    cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
-    save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
+    # """Step2. Obtain camera intrinsic matrices and save them"""
+    # #camera0 intrinsics
+    # images_prefix = os.path.join('frames', 'camera0*')
+    # cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
+    # save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
+    # #camera1 intrinsics
+    # images_prefix = os.path.join('frames', 'camera1*')
+    # cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
+    # save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
 
 
     """Step3. Save calibration frames for both cameras simultaneously"""

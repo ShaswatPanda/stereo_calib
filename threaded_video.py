@@ -36,51 +36,80 @@ def single_threaded_video_stream():
     vcap.release()
     cv2.destroyAllWindows()
 
-# defining a helper class for implementing multi-threading 
-class WebcamStream :
-    # initialization method 
-    def __init__(self, stream_id=0):
-        self.stream_id = stream_id # default is 0 for main camera 
+class ThreadedCamera(object):
+    def __init__(self, source = 0):
+
+        self.capture = cv2.VideoCapture(source)
+
+        self.thread = Thread(target = self.update, args = ())
+        self.thread.daemon = True
+
+        self.status = False
+        self.frame  = None
+
+    def update(self):
+        while True:
+            if self.capture.isOpened():
+                (self.status, self.frame) = self.capture.read()
+            else:
+                break
+        self.stop()
+
+    def grab_frame(self):
+        return self.status, self.frame
+    
+    def start(self):
+        self.thread.start()
+     
+    def stop(self):
+        print("Stopping stream...")
+        self.capture.release()
         
-        # opening video capture stream 
-        self.vcap      = cv2.VideoCapture(self.stream_id)
-        if self.vcap.isOpened() is False :
+class WebcamStream :
+    def __init__(self, stream_id=0):
+        self.stream_id = stream_id 
+        
+        self.capture = cv2.VideoCapture(self.stream_id)
+        if self.capture.isOpened() is False :
             print("[Exiting]: Error accessing webcam stream.")
             exit(0)
-        fps_input_stream = int(self.vcap.get(5)) # hardware fps
+        fps_input_stream = int(self.capture.get(5)) # hardware fps
         print("FPS of input stream: {}".format(fps_input_stream))
-            
-        # reading a single frame from vcap stream for initializing 
-        self.grabbed , self.frame = self.vcap.read()
+        
+        self.grabbed , self.frame = self.capture.read()
         if self.grabbed is False :
             print('[Exiting] No more frames to read')
             exit(0)
-        # self.stopped is initialized to False 
+        
+        self.frame_number = 0
+        self.frames = {}
+
         self.stopped = True
-        # thread instantiation  
         self.t = Thread(target=self.update, args=())
         self.t.daemon = True # daemon threads run in background 
         
-    # method to start thread 
     def start(self):
         self.stopped = False
         self.t.start()
-    # method passed to thread to read next available frame  
+
     def update(self):
         while True :
             if self.stopped is True :
                 break
-            self.grabbed , self.frame = self.vcap.read()
-            if self.grabbed is False :
+            self.grabbed , self.frame = self.capture.read()
+            if self.grabbed:
+                self.frame_number += 1
+            else:
                 print('[Exiting] No more frames to read')
                 self.stopped = True
                 break 
-        self.vcap.release()
-    # method to return latest read frame 
-    def read(self):
-        return self.frame
-    # method to stop reading frames 
+        self.capture.release()
+
+    def grab_frame(self, frame_number=None):
+        return self.grabbed, self.frame
+
     def stop(self):
+        print(f"Stopping stream {self.stream_id}...")
         self.stopped = True
      
 def multi_threaded_video_stream():
