@@ -112,6 +112,57 @@ class WebcamStream :
         print(f"Stopping stream {self.stream_id}...")
         self.stopped = True
      
+class WebcamStreamSynced :
+    def __init__(self, stream_id=0):
+        self.stream_id = stream_id 
+        
+        self.capture = cv2.VideoCapture(self.stream_id)
+        if self.capture.isOpened() is False :
+            print("[Exiting]: Error accessing webcam stream.")
+            exit(0)
+        fps_input_stream = int(self.capture.get(5)) # hardware fps
+        print("FPS of input stream: {}".format(fps_input_stream))
+        
+        self.grabbed , self.frame = self.capture.read()
+        if self.grabbed is False :
+            print('[Exiting] No more frames to read')
+            exit(0)
+        
+        self.frame_number = 0
+        self.frames = {}
+
+        self.stopped = True
+        self.t = Thread(target=self.update, args=())
+        self.t.daemon = True # daemon threads run in background 
+        
+    def start(self):
+        self.stopped = False
+        self.t.start()
+
+    def update(self):
+        while True :
+            if self.stopped is True :
+                break
+            self.grabbed , self.frame = self.capture.read()
+            if self.grabbed:
+                self.frames[self.frame_number] = self.frame
+                self.frame_number += 1
+                # time.sleep(0.0065)
+            else:
+                print('[Exiting] No more frames to read')
+                self.stopped = True
+                break 
+        self.capture.release()
+
+    def grab_frame(self, frame_number=None):
+        print(f"{self.stream_id} LEN: {len(self.frames)} CURRENT: {self.frame_number} REQUESTED: {frame_number}")
+        return frame_number in self.frames, self.frames.pop(frame_number, None)
+
+    def stop(self):
+        print(f"Stopping stream {self.stream_id}...")
+        self.stopped = True
+        
+        
 def multi_threaded_video_stream():
     # initializing and starting multi-threaded webcam input stream 
     webcam_stream = WebcamStream(stream_id=0) # 0 id for main camera

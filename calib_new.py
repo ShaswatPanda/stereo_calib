@@ -10,7 +10,8 @@ import imutils
 import atexit
 import time
 from threading import Thread
-from threaded_video import WebcamStream, ThreadedCamera
+from threaded_video import WebcamStream, ThreadedCamera, WebcamStreamSynced
+# from threaded_video import WebcamStreamSynced as WebcamStream
 
 ip_webcam = False
 #This will contain the calibration settings from the calibration_settings.yaml file
@@ -257,10 +258,10 @@ def save_frames_two_cams(camera0_name, camera1_name):
     #     cap1 = cv2.VideoCapture(calibration_settings[camera1_name])
         
     # streamer_left = ThreadedCamera(calibration_settings[camera0_name])
-    streamer_left = WebcamStream(calibration_settings[camera0_name])
+    streamer_left = WebcamStreamSynced(calibration_settings[camera0_name])
     atexit.register(streamer_left.stop)
     # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
-    streamer_right = WebcamStream(calibration_settings[camera1_name])
+    streamer_right = WebcamStreamSynced(calibration_settings[camera1_name])
     atexit.register(streamer_right.stop)
 
     #set camera resolutions
@@ -289,6 +290,7 @@ def save_frames_two_cams(camera0_name, camera1_name):
     saved_count = 0
     frame_number = 0
     t1 = time.time()
+    fps = None
     
     while True:
 
@@ -354,16 +356,20 @@ def save_frames_two_cams(camera0_name, camera1_name):
 
         combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))))
         cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        cv2.imshow('img', combined_frame0_frame_1)
         cv2.imshow('img', combined_frame0_frame_1)
         
         frame_number += 1
         if frame_number % 100 == 0:
             t2 = time.time()
             time_taken = t2 - t1
-            print(f"Real-time FPS: {100/time_taken}")
+            fps = round(100/time_taken, 2)
+            print(f"Real-time FPS: {fps}")
             t1 = t2
             
-        k = cv2.waitKey(100)
+        k = cv2.waitKey(1)
         if k == 27:
             quit()  
         if k == ord('q'): # Q
@@ -688,20 +694,20 @@ if __name__ == '__main__':
     parse_calibration_settings_file(sys.argv[1])
 
 
-    # """Step1. Save calibration frames for single cameras"""
-    # save_frames_single_camera('camera0') #save frames for camera0
-    # save_frames_single_camera('camera1') #save frames for camera1
+    """Step1. Save calibration frames for single cameras"""
+    save_frames_single_camera('camera0') #save frames for camera0
+    save_frames_single_camera('camera1') #save frames for camera1
 
 
-    # """Step2. Obtain camera intrinsic matrices and save them"""
-    # #camera0 intrinsics
-    # images_prefix = os.path.join('frames', 'camera0*')
-    # cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
-    # save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
-    # #camera1 intrinsics
-    # images_prefix = os.path.join('frames', 'camera1*')
-    # cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
-    # save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
+    """Step2. Obtain camera intrinsic matrices and save them"""
+    #camera0 intrinsics
+    images_prefix = os.path.join('frames', 'camera0*')
+    cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
+    save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
+    #camera1 intrinsics
+    images_prefix = os.path.join('frames', 'camera1*')
+    cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
+    save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
 
 
     """Step3. Save calibration frames for both cameras simultaneously"""
