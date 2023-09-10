@@ -22,7 +22,6 @@ class ThreadedCamera(object):
 
         self.thread = Thread(target = self.update, args = ())
         self.thread.daemon = True
-        self.thread.start()
 
         self.status = False
         self.frame  = None
@@ -37,10 +36,101 @@ class ThreadedCamera(object):
 
     def grab_frame(self):
         return self.status, self.frame
+    
+    def start(self):
+        self.thread.start()
      
     def stop(self):
         print("Stopping stream...")
         self.capture.release()
+        
+# defining a helper class for implementing multi-threading 
+class WebcamStream :
+    # initialization method 
+    def __init__(self, stream_id=0):
+        self.stream_id = stream_id # default is 0 for main camera 
+        
+        # opening video capture stream 
+        self.capture = cv2.VideoCapture(self.stream_id)
+        if self.capture.isOpened() is False :
+            print("[Exiting]: Error accessing webcam stream.")
+            exit(0)
+        fps_input_stream = int(self.capture.get(5)) # hardware fps
+        print("FPS of input stream: {}".format(fps_input_stream))
+            
+        # reading a single frame from capture stream for initializing 
+        self.grabbed , self.frame = self.capture.read()
+        if self.grabbed is False :
+            print('[Exiting] No more frames to read')
+            exit(0)
+        # self.stopped is initialized to False 
+        self.stopped = True
+        # thread instantiation  
+        self.t = Thread(target=self.update, args=())
+        self.t.daemon = True # daemon threads run in background 
+        
+    # method to start thread 
+    def start(self):
+        self.stopped = False
+        self.t.start()
+    # method passed to thread to read next available frame  
+    def update(self):
+        while True :
+            if self.stopped is True :
+                break
+            self.grabbed , self.frame = self.capture.read()
+            if self.grabbed is False :
+                print('[Exiting] No more frames to read')
+                self.stopped = True
+                break 
+        self.capture.release()
+    # method to return latest read frame 
+    def grab_frame(self):
+        return self.grabbed, self.frame
+    # method to stop reading frames 
+    def stop(self):
+        print(f"Stopping stream {self.stream_id}...")
+        self.stopped = True
+
+class GetCheckerboard():
+    def __init__(self, rows, columns) -> None:
+        self.rows = rows
+        self.columns = columns
+        self.frame_stack = []
+        self.frame = None
+        
+        self.stopped = True
+        self.thread = Thread(target = self.update, args = ())
+        self.thread.daemon = True
+        pass
+    
+    def start(self):
+        self.stopped = False
+        self.t.start()
+    
+    def update(self):
+        while True :
+            if self.stopped is True :
+                break
+            if self.grabbed is False :
+                self.stopped = True
+                break
+            if self.frame_stack:
+                frame = self.frame_stack.pop()
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+                ret, corners = cv2.findChessboardCorners(gray, (self.rows, self.columns), None)
+                conv_size = (11, 11)
+                criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 0.001)
+                if ret == True:
+                    corners = cv2.cornerSubPix(gray, corners, conv_size, (-1, -1), criteria)
+                    self.frame = cv2.drawChessboardCorners(frame, (self.rows,self.columns), corners, ret)
+                
+    def get_checkerboard(self, frame):
+        self.frame_stack.append(frame)
+        return self.frame
+
+    def stop(self):
+        self.stopped = True
 
 #Given Projection matrices P1 and P2, and pixel coordinates point1 and point2, return triangulated 3D point.
 def DLT(P1, P2, point1, point2):
@@ -103,10 +193,12 @@ def save_frames_single_camera(camera_name):
     # cap.set(3, width)
     # cap.set(4, height)
 
-    streamer = ThreadedCamera(camera_device_id)
+    # streamer = ThreadedCamera(camera_device_id)
+    streamer = WebcamStream(camera_device_id)
     atexit.register(streamer.stop)
     streamer.capture.set(3, width)
     streamer.capture.set(4, height)
+    streamer.start()
     
     # while streamer.status == False:
     #     continue
@@ -115,13 +207,12 @@ def save_frames_single_camera(camera_name):
     cooldown = cooldown_time
     start = False
     saved_count = 0
-
+    frame_number = 0
+    t1 = time.time()
+        
     while True:
-    
-        # ret, frame = cap.read()
         ret, frame = streamer.grab_frame()
         if ret == False:
-            #if no video data is received, can't calibrate the camera, so exit.
             print("No video data received from camera. Exiting...")
             quit()
 
@@ -149,22 +240,26 @@ def save_frames_single_camera(camera_name):
                 cv2.imwrite(savename, frame)
                 saved_count += 1
                 cooldown = cooldown_time
-
+        
+        frame_number += 1
+        if frame_number % 100 == 0:
+            t2 = time.time()
+            time_taken = t2 - t1
+            print(f"Real-time FPS: {100/time_taken}")
+            t1 = t2
         cv2.imshow('frame_small', frame_small)
         k = cv2.waitKey(1)
         
         if k == 27: # ESC
             quit()
         if k == ord('q'): # Q
-            quit()
-            
+            quit()     
         if k == 32:
-            #Press spacebar to start data collection
             start = True
 
         #break out of the loop when enough number of frames have been saved
         if saved_count == number_to_save: break
-
+    streamer.stop()
     cv2.destroyAllWindows()
 
 
@@ -175,7 +270,7 @@ def calibrate_camera_for_intrinsic_parameters(images_prefix):
     images_names = glob.glob(images_prefix)
 
     #read all frames
-    images = [cv2.imread(imname, 2) for imname in images_names]
+    images = [cv2.imread(imname) for imname in images_names]
 
     #criteria used by checkerboard pattern detector.
     #Change this if the code can't find the checkerboard. 
@@ -277,9 +372,11 @@ def save_frames_two_cams(camera0_name, camera1_name):
     # if not ip_webcam:
     #     cap1 = cv2.VideoCapture(calibration_settings[camera1_name])
         
-    streamer_left = ThreadedCamera(calibration_settings[camera0_name])
+    # streamer_left = ThreadedCamera(calibration_settings[camera0_name])
+    streamer_left = WebcamStream(calibration_settings[camera0_name])
     atexit.register(streamer_left.stop)
-    streamer_right = ThreadedCamera(calibration_settings[camera1_name])
+    # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
+    streamer_right = WebcamStream(calibration_settings[camera1_name])
     atexit.register(streamer_right.stop)
 
     #set camera resolutions
@@ -296,6 +393,9 @@ def save_frames_two_cams(camera0_name, camera1_name):
     streamer_left.capture.set(4, height)
     streamer_right.capture.set(3, width)
     streamer_right.capture.set(4, height)
+    
+    streamer_left.start()
+    streamer_right.start()
 
     # cv2.namedWindow("frame0_small", cv2.WINDOW_NORMAL) 
     # cv2.namedWindow("frame1_small", cv2.WINDOW_NORMAL) 
@@ -303,6 +403,9 @@ def save_frames_two_cams(camera0_name, camera1_name):
     cooldown = cooldown_time
     start = False
     saved_count = 0
+    frame_number = 0
+    t1 = time.time()
+    
     while True:
 
         # ret0, frame0 = cap0.read()
@@ -365,31 +468,30 @@ def save_frames_two_cams(camera0_name, camera1_name):
                 saved_count += 1
                 cooldown = cooldown_time
 
-        # cv2.imshow('frame0_small', frame0_small)
-        # cv2.imshow('frame1_small', frame1_small)
-        
-        # print(f"Frame 0: {frame0.shape}\tFrame1: {frame1.shape}")
         combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))))
         cv2.imshow('img', combined_frame0_frame_1)
         
-        k = cv2.waitKey(1)
-        
-        if k == 27:
-            #if ESC is pressed at any time, the program will exit.
-            quit()
+        frame_number += 1
+        if frame_number % 100 == 0:
+            t2 = time.time()
+            time_taken = t2 - t1
+            print(f"Real-time FPS: {100/time_taken}")
+            t1 = t2
             
+        k = cv2.waitKey(1)
+        if k == 27:
+            quit()  
         if k == ord('q'): # Q
             quit()
-
         if k == 32:
-            #Press spacebar to start data collection
             start = True
 
         #break out of the loop when enough number of frames have been saved
         if saved_count == number_to_save: break
 
+    streamer_left.stop()
+    streamer_right.stop()
     cv2.destroyAllWindows()
-
 
 #open paired calibration frames and stereo calibrate for cam0 to cam1 coorindate transformations
 def stereo_calibrate(mtx0, dist0, mtx1, dist1, frames_prefix_c0, frames_prefix_c1):
@@ -706,15 +808,15 @@ if __name__ == '__main__':
     save_frames_single_camera('camera1') #save frames for camera1
 
 
-    """Step2. Obtain camera intrinsic matrices and save them"""
-    #camera0 intrinsics
-    images_prefix = os.path.join('frames', 'camera0*')
-    cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
-    save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
-    #camera1 intrinsics
-    images_prefix = os.path.join('frames', 'camera1*')
-    cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
-    save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
+    # """Step2. Obtain camera intrinsic matrices and save them"""
+    # #camera0 intrinsics
+    # images_prefix = os.path.join('frames', 'camera0*')
+    # cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
+    # save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
+    # #camera1 intrinsics
+    # images_prefix = os.path.join('frames', 'camera1*')
+    # cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
+    # save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
 
 
     """Step3. Save calibration frames for both cameras simultaneously"""
