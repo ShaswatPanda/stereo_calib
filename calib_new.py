@@ -808,15 +808,15 @@ if __name__ == '__main__':
     save_frames_single_camera('camera1') #save frames for camera1
 
 
-    # """Step2. Obtain camera intrinsic matrices and save them"""
-    # #camera0 intrinsics
-    # images_prefix = os.path.join('frames', 'camera0*')
-    # cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
-    # save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
-    # #camera1 intrinsics
-    # images_prefix = os.path.join('frames', 'camera1*')
-    # cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
-    # save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
+    """Step2. Obtain camera intrinsic matrices and save them"""
+    #camera0 intrinsics
+    images_prefix = os.path.join('frames', 'camera0*')
+    cmtx0, dist0 = calibrate_camera_for_intrinsic_parameters(images_prefix) 
+    save_camera_intrinsics(cmtx0, dist0, 'camera0') #this will write cmtx and dist to disk
+    #camera1 intrinsics
+    images_prefix = os.path.join('frames', 'camera1*')
+    cmtx1, dist1 = calibrate_camera_for_intrinsic_parameters(images_prefix)
+    save_camera_intrinsics(cmtx1, dist1, 'camera1') #this will write cmtx and dist to disk
 
 
     """Step3. Save calibration frames for both cameras simultaneously"""
