@@ -279,8 +279,6 @@ def save_frames_two_cams(camera0_name, camera1_name):
     streamer_right.capture.set(3, width)
     streamer_right.capture.set(4, height)
     
-    streamer_left.start()
-    streamer_right.start()
 
     # cv2.namedWindow("frame0_small", cv2.WINDOW_NORMAL) 
     # cv2.namedWindow("frame1_small", cv2.WINDOW_NORMAL) 
@@ -291,6 +289,9 @@ def save_frames_two_cams(camera0_name, camera1_name):
     frame_number = 0
     t1 = time.time()
     fps = None
+    
+    streamer_left.start()
+    streamer_right.start()
     
     while True:
 
@@ -354,7 +355,7 @@ def save_frames_two_cams(camera0_name, camera1_name):
                 saved_count += 1
                 cooldown = cooldown_time
 
-        combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))))
+        combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))), axis=1)
         cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
@@ -441,7 +442,7 @@ def stereo_calibrate(mtx0, dist0, mtx1, dist1, frames_prefix_c0, frames_prefix_c
             # cv2.imshow('img2', frame1)
             
             print(f"Frame 0: {frame0.shape}\tFrame1: {frame1.shape}")
-            combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))))
+            combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
             cv2.imshow('img', combined_frame0_frame_1)
             
             k = cv2.waitKey(0)
@@ -571,7 +572,7 @@ def check_calibration(camera0_name, camera0_data, camera1_name, camera1_data, _z
         # cv2.imshow('frame0', frame0)
         # cv2.imshow('frame1', frame1)
         # print(f"Frame 0: {frame0.shape}\tFrame1: {frame1.shape}")
-        combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))))
+        combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
         cv2.imshow('img', combined_frame0_frame_1)
 
         k = cv2.waitKey(1)
