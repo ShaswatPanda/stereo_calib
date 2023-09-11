@@ -129,6 +129,7 @@ class WebcamStreamSynced :
             exit(0)
         
         self.frame_number = 0
+        self.requested_frame_number = 0
         self.frames = {}
 
         self.stopped = True
@@ -143,19 +144,24 @@ class WebcamStreamSynced :
         while True :
             if self.stopped is True :
                 break
-            self.grabbed , self.frame = self.capture.read()
-            if self.grabbed:
-                self.frames[self.frame_number] = self.frame
-                self.frame_number += 1
-                time.sleep(1/60)
+            if self.frame_number - self.requested_frame_number < 3000:
+                self.grabbed , self.frame = self.capture.read()
+                if self.grabbed:
+                    self.frames[self.frame_number] = self.frame
+                    self.frame_number += 1
+                    # time.sleep(1/60)
+                else:
+                    print('[Exiting] No more frames to read')
+                    self.stopped = True
+                    break 
             else:
-                print('[Exiting] No more frames to read')
-                self.stopped = True
-                break 
+                continue
+            
         self.capture.release()
 
     def grab_frame(self, frame_number=None):
-        print(f"{self.stream_id} LEN: {len(self.frames)} CURRENT: {self.frame_number} REQUESTED: {frame_number}")
+        self.requested_frame_number = frame_number
+        print(f"{self.stream_id} LEN: {len(self.frames)} CURRENT: {self.frame_number} REQUESTED: {self.requested_frame_number} DIFF:{self.frame_number - self.requested_frame_number}")
         return frame_number in self.frames, self.frames.pop(frame_number, None)
 
     def stop(self):
