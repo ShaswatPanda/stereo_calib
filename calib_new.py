@@ -84,7 +84,7 @@ def save_frames_single_camera(camera_name):
     streamer.capture.set(3, width)
     streamer.capture.set(4, height)
     streamer.start()
-    
+    time.sleep(1)
     # while streamer.status == False:
     #     continue
     time.sleep(1)
@@ -292,6 +292,7 @@ def save_frames_two_cams(camera0_name, camera1_name):
     
     streamer_left.start()
     streamer_right.start()
+    time.sleep(1)
     
     while True:
 
