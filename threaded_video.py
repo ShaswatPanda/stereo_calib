@@ -147,7 +147,7 @@ class WebcamStreamSynced :
             if self.grabbed:
                 self.frames[self.frame_number] = self.frame
                 self.frame_number += 1
-                # time.sleep(0.0065)
+                time.sleep(1/60)
             else:
                 print('[Exiting] No more frames to read')
                 self.stopped = True
