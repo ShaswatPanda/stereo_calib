@@ -9,8 +9,9 @@ import time
 from utils import DLT, get_projection_matrix, write_keypoints_to_disk
 from threaded_video import WebcamStreamSynced
 
-frame_shape = [1280, 720]
 ip_cam = False
+sync = False
+frame_shape = [1280, 720]
 global coords
 
 #Open and load the calibration_settings.yaml file
@@ -28,32 +29,38 @@ def parse_calibration_settings_file(filename):
         quit()
 
 def run_mp(input_stream1, input_stream2, P0, P1):
-    #input video stream
-    # cap0 = cv2.VideoCapture(input_stream1)
-    # if ip_cam:
-    #     caps = [cap0]
-    # else:
-    #     cap1 = cv2.VideoCapture(input_stream2)
-    #     caps = [cap0, cap1]
-
-    streamer_left = WebcamStreamSynced(input_stream1)
-    atexit.register(streamer_left.stop)
-    # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
-    streamer_right = WebcamStreamSynced(input_stream2)
-    atexit.register(streamer_right.stop)
-    
-    #set camera resolution if using webcam to 1280x720. Any bigger will cause some lag for hand detection
-    # for cap in caps:
-    #     cap.set(3, frame_shape[1])
-    #     cap.set(4, frame_shape[0])
-    #set camera resolutions
     width = calibration_settings['frame_width']
     height = calibration_settings['frame_height']
     
-    streamer_left.capture.set(3, width)
-    streamer_left.capture.set(4, height)
-    streamer_right.capture.set(3, width)
-    streamer_right.capture.set(4, height)
+    #input video stream
+    #set camera resolutions
+    if sync:
+        streamer_left = WebcamStreamSynced(input_stream1)
+        atexit.register(streamer_left.stop)
+        # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
+        streamer_right = WebcamStreamSynced(input_stream2)
+        atexit.register(streamer_right.stop)
+        
+        streamer_left.capture.set(3, width)
+        streamer_left.capture.set(4, height)
+        streamer_right.capture.set(3, width)
+        streamer_right.capture.set(4, height)
+    
+        streamer_left.start()
+        streamer_right.start()
+        time.sleep(1)
+    else:
+        cap0 = cv2.VideoCapture(input_stream1)
+        if ip_cam:
+            caps = [cap0]
+        else:
+            cap1 = cv2.VideoCapture(input_stream2)
+            caps = [cap0, cap1]
+        # set camera resolution if using webcam to 1280x720. Any bigger will cause some lag for hand detection
+        for cap in caps:
+            cap.set(3, frame_shape[1])
+            cap.set(4, frame_shape[0])
+    
 
     #containers for detected keypoints for each camera. These are filled at each frame.
     #This will run you into memory issue if you run the program without stop
@@ -70,40 +77,41 @@ def run_mp(input_stream1, input_stream2, P0, P1):
     t1 = time.time()
     fps = None
     
-    streamer_left.start()
-    streamer_right.start()
-    time.sleep(1)
     
     while True:
 
-        # #read frames from stream
-        # ret0, frame0 = cap0.read()
-        # if not ip_cam:
-        #     ret1, frame1 = cap1.read()
-        # else:
-        #     url = "http://192.168.1.2:8080/shot.jpg"
-        #     img_resp = requests.get(url)
-        #     img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
-        #     img = cv2.imdecode(img_arr, -1)
-        #     ret1, frame1 = True, img
+        #read frames from stream
+        if sync:
+            ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
+            ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
+        else:
+            ret0, frame0 = cap0.read()
+            if not ip_cam:
+                ret1, frame1 = cap1.read()
+            else:
+                url = "http://192.168.1.2:8080/shot.jpg"
+                img_resp = requests.get(url)
+                img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
+                img = cv2.imdecode(img_arr, -1)
+                ret1, frame1 = True, img
 
-        ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
-        ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
 
         if not ret0 or not ret1: 
             print('Cameras not returning video data. Exiting...')
             break
 
-        #crop to 720x720.
-        #Note: camera calibration parameters are set to this resolution.If you change this, make sure to also change camera intrinsic parameters
-        # if frame0.shape[1] != 720:
-        #     frame0 = frame0[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
-        #     frame1 = frame1[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
-        
-        # if ip_cam: 
-        #     frame1 = frame1[frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2, :, :]
+        if not sync:
+            """
+            crop to 720x720.
+            Note: camera calibration parameters are set to this resolution.If you change this, make sure to also change camera intrinsic parameters
+            """
+            if frame0.shape[1] != 720:
+                frame0 = frame0[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
+                frame1 = frame1[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
+            
+            if ip_cam: 
+                frame1 = frame1[frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2, :, :]
 
-        # print(frame0.shape, frame1.shape)
         combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
 
         if not start:
@@ -150,11 +158,10 @@ def run_mp(input_stream1, input_stream2, P0, P1):
 
         # # cv2.imshow('cam1', frame1)
         # # cv2.imshow('cam0', frame0)
-        cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        if sync:
+            cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
-        cv2.imshow('img', combined_frame0_frame_1)
-        cv2.imshow('img', combined_frame0_frame_1)
         cv2.imshow('img', combined_frame0_frame_1)
 
         frame_number += 1
@@ -171,11 +178,13 @@ def run_mp(input_stream1, input_stream2, P0, P1):
         if k == 32:
             #Press spacebar to start data collection
             start = True
-
-    # for cap in caps:
-    #     cap.release()
-    streamer_left.stop()
-    streamer_right.stop()   
+    
+    if sync:
+        streamer_left.stop()
+        streamer_right.stop()   
+    else:
+        for cap in caps:
+            cap.release()
     cv2.destroyAllWindows()
 
 

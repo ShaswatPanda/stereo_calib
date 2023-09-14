@@ -14,6 +14,7 @@ from threaded_video import WebcamStream, ThreadedCamera, WebcamStreamSynced
 # from threaded_video import WebcamStreamSynced as WebcamStream
 
 ip_webcam = False
+sync = False
 #This will contain the calibration settings from the calibration_settings.yaml file
 calibration_settings = {}
 
@@ -74,20 +75,23 @@ def save_frames_single_camera(camera_name):
 
     #open video stream and change resolution.
     #Note: if unsupported resolution is used, this does NOT raise an error.
-    # cap = cv2.VideoCapture(camera_device_id)
-    # cap.set(3, width)
-    # cap.set(4, height)
 
-    # streamer = ThreadedCamera(camera_device_id)
-    streamer = WebcamStream(camera_device_id)
-    atexit.register(streamer.stop)
-    streamer.capture.set(3, width)
-    streamer.capture.set(4, height)
-    streamer.start()
-    time.sleep(1)
-    # while streamer.status == False:
-    #     continue
-    time.sleep(1)
+    if sync:
+        # streamer = ThreadedCamera(camera_device_id)
+        streamer = WebcamStream(camera_device_id)
+        atexit.register(streamer.stop)
+        streamer.capture.set(3, width)
+        streamer.capture.set(4, height)
+        streamer.start()
+        time.sleep(1)
+        # while streamer.status == False:
+        #     continue
+        time.sleep(1)
+    else:
+        cap = cv2.VideoCapture(camera_device_id)
+        cap.set(3, width)
+        cap.set(4, height)
+        
     
     cooldown = cooldown_time
     start = False
@@ -96,7 +100,11 @@ def save_frames_single_camera(camera_name):
     t1 = time.time()
         
     while True:
-        ret, frame = streamer.grab_frame()
+        if sync:
+            ret, frame = streamer.grab_frame()
+        else:
+            ret, frame = cap.read()
+            
         if ret == False:
             print("No video data received from camera. Exiting...")
             quit()
@@ -144,7 +152,10 @@ def save_frames_single_camera(camera_name):
 
         #break out of the loop when enough number of frames have been saved
         if saved_count == number_to_save: break
-    streamer.stop()
+    if sync:
+        streamer.stop()
+    else:
+        cap.release()
     cv2.destroyAllWindows()
 
 
@@ -251,34 +262,37 @@ def save_frames_two_cams(camera0_name, camera1_name):
     number_to_save = calibration_settings['stereo_calibration_frames']
     rows = calibration_settings['checkerboard_rows']
     columns = calibration_settings['checkerboard_columns']
-
-    #open the video streams
-    # cap0 = cv2.VideoCapture(calibration_settings[camera0_name])
-    # if not ip_webcam:
-    #     cap1 = cv2.VideoCapture(calibration_settings[camera1_name])
-        
-    # streamer_left = ThreadedCamera(calibration_settings[camera0_name])
-    streamer_left = WebcamStreamSynced(calibration_settings[camera0_name])
-    atexit.register(streamer_left.stop)
-    # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
-    streamer_right = WebcamStreamSynced(calibration_settings[camera1_name])
-    atexit.register(streamer_right.stop)
-
-    #set camera resolutions
     width = calibration_settings['frame_width']
     height = calibration_settings['frame_height']
+
+    #open the video streams
+    #set camera resolutions
+    if sync:
+        # streamer_left = ThreadedCamera(calibration_settings[camera0_name])
+        streamer_left = WebcamStreamSynced(calibration_settings[camera0_name])
+        atexit.register(streamer_left.stop)
+        # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
+        streamer_right = WebcamStreamSynced(calibration_settings[camera1_name])
+        atexit.register(streamer_right.stop)
+        
+        streamer_left.capture.set(3, width)
+        streamer_left.capture.set(4, height)
+        streamer_right.capture.set(3, width)
+        streamer_right.capture.set(4, height)
     
-    # cap0.set(3, width)
-    # cap0.set(4, height)
-    # if not ip_webcam:
-    #     cap1.set(3, width)
-    #     cap1.set(4, height)
-    
-    streamer_left.capture.set(3, width)
-    streamer_left.capture.set(4, height)
-    streamer_right.capture.set(3, width)
-    streamer_right.capture.set(4, height)
-    
+        streamer_left.start()
+        streamer_right.start()
+        time.sleep(1)
+    else:
+        cap0 = cv2.VideoCapture(calibration_settings[camera0_name])
+        if not ip_webcam:
+            cap1 = cv2.VideoCapture(calibration_settings[camera1_name])
+        
+        cap0.set(3, width)
+        cap0.set(4, height)
+        if not ip_webcam:
+            cap1.set(3, width)
+            cap1.set(4, height)
 
     # cv2.namedWindow("frame0_small", cv2.WINDOW_NORMAL) 
     # cv2.namedWindow("frame1_small", cv2.WINDOW_NORMAL) 
@@ -290,24 +304,24 @@ def save_frames_two_cams(camera0_name, camera1_name):
     t1 = time.time()
     fps = None
     
-    streamer_left.start()
-    streamer_right.start()
-    time.sleep(1)
     
     while True:
 
-        # ret0, frame0 = cap0.read()
-        # if not ip_webcam:
-        #     ret1, frame1 = cap1.read()
-        # else:
-        #     url = "http://192.168.1.2:8080/shot.jpg"
-        #     img_resp = requests.get(url)
-        #     img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
-        #     img = cv2.imdecode(img_arr, -1)
-        #     ret1, frame1 = True, img
+        if sync:
+            ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
+            ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
+        else:
+            ret0, frame0 = cap0.read()
+            ret1, frame1 = cap1.read()
+            # if not ip_webcam:
+            #     ret1, frame1 = cap1.read()
+            # else:
+            #     url = "http://192.168.1.2:8080/shot.jpg"
+            #     img_resp = requests.get(url)
+            #     img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
+            #     img = cv2.imdecode(img_arr, -1)
+            #     ret1, frame1 = True, img
 
-        ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
-        ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
         
         if not (ret0 and ret1):
             print('Cameras not returning video data. Exiting...')
@@ -357,7 +371,8 @@ def save_frames_two_cams(camera0_name, camera1_name):
                 cooldown = cooldown_time
 
         combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))), axis=1)
-        cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        if sync:
+            cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.imshow('img', combined_frame0_frame_1)
@@ -381,9 +396,12 @@ def save_frames_two_cams(camera0_name, camera1_name):
 
         #break out of the loop when enough number of frames have been saved
         if saved_count == number_to_save: break
-
-    streamer_left.stop()
-    streamer_right.stop()
+    if sync:
+        streamer_left.stop()
+        streamer_right.stop()
+    else:
+        cap0.release()
+        cap1.release()
     cv2.destroyAllWindows()
 
 #open paired calibration frames and stereo calibrate for cam0 to cam1 coorindate transformations
