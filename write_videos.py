@@ -7,6 +7,7 @@ import yaml
 import time
 from datetime import datetime
 
+sync = False
 
 def parse_calibration_settings_file(filename):
     calibration_settings = None
@@ -32,33 +33,50 @@ def main(args):
     result_path = "./videos/results"
     os.makedirs(result_path, exist_ok=True)
     
-     
-    streamer_left = WebcamStreamSynced(args["camera0"])
-    atexit.register(streamer_left.stop)
+    if sync: 
+        streamer_left = WebcamStreamSynced(args["camera0"])
+        atexit.register(streamer_left.stop)
+        streamer_right = WebcamStreamSynced(args["camera1"])
+        atexit.register(streamer_right.stop)
+        
+        width_left, height_left = streamer_left.frame.shape[1],streamer_left.frame.shape[0]
+        width_right, height_right = streamer_right.frame.shape[1],streamer_right.frame.shape[0]
+        
+        streamer_left.start()
+        streamer_right.start()
+        time.sleep(1)
+    else:
+        streamer_left = cv2.VideoCapture(args["camera0"])
+        streamer_right = cv2.VideoCapture(args["camera1"])
+        
+        width_left  = int(streamer_left.get(cv2.CAP_PROP_FRAME_WIDTH))   
+        height_left = int(streamer_left.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        width_right  = int(streamer_right.get(cv2.CAP_PROP_FRAME_WIDTH))   
+        height_right = int(streamer_right.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    streamer_right = WebcamStreamSynced(args["camera1"])
-    atexit.register(streamer_right.stop)
-
-    assert (streamer_left.frame.shape[1],streamer_left.frame.shape[0]) == (streamer_right.frame.shape[1],streamer_right.frame.shape[0]), "PLEASE ENSURE THE SIZES OF THE STREAMS ARE THE SAME" 
+    print((width_left, width_right), (width_right, height_right))
+    # assert (width_left, width_right) == (width_right, height_right), "PLEASE ENSURE THE SIZES OF THE STREAMS ARE THE SAME" 
     
     run_time = datetime.now().strftime("%Y-%m-%d_%H_%M_%S")
     
-    result_left = cv2.VideoWriter(f'{result_path}/left_stream_{run_time}.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30, (streamer_left.frame.shape[1],streamer_left.frame.shape[0]))
-    result_right = cv2.VideoWriter(f'{result_path}/right_stream_{run_time}.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30, (streamer_right.frame.shape[1],streamer_right.frame.shape[0]))
+    result_left = cv2.VideoWriter(f'{result_path}/left_stream_{run_time}.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30, (width_left, height_left))
+    result_right = cv2.VideoWriter(f'{result_path}/right_stream_{run_time}.avi', cv2.VideoWriter_fourcc(*'MJPG'), 30, (width_right, height_right))
 
     cv2.namedWindow("img", cv2.WINDOW_NORMAL)
     frame_number = 0
     t1 = time.time()
     fps = None
-    
-    streamer_left.start()
-    streamer_right.start()
-    time.sleep(1)
+
     
     while(True):  
-        ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
-        ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
+        
         view_resize= 1
+        if sync:
+            ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
+            ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
+        else:
+            ret0, frame0 = streamer_left.read()
+            ret1, frame1 = streamer_right.read()
 
         if not (ret0 and ret1):
             break
@@ -71,7 +89,8 @@ def main(args):
         result_right.write(write_frame1)
 
         combined_frame0_frame_1 = np.concatenate((frame0_small, cv2.resize(frame1_small, (frame0_small.shape[1], frame0_small.shape[0]))), axis=1)
-        cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
+        if sync:
+            cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
         cv2.imshow('img', combined_frame0_frame_1)
@@ -86,7 +105,7 @@ def main(args):
             
         if cv2.waitKey(1) & 0xFF == ord('q'):  
             break  
-        
+  
     result_left.release()
     result_right.release()
     streamer_left.stop()
