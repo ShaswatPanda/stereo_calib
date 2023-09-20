@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 
 class YOLO:
     def __init__(self):
-        self.yolo = torch.hub.load('./yolov5', 'custom', path='/home/shaswat/Desktop/Asynq/stupa-tt/weights/GeneralisedBest.pt', source='local')
+        self.yolo = torch.hub.load('./yolov5', 'custom', path='./weights/GeneralisedBest.pt', source='local')
         # self.yolo = torch.hub.load('./yolov5', 'custom', path='./weights/Generalisedv5S.pt', source='local')
         # self.yolo = torch.hub.load('./yolov5', 'custom', path='./weights/beterFullbestN.pt', source='local')
         self.yolo.conf = 0.4
