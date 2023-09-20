@@ -9,40 +9,38 @@ def main(input_stream0, input_stream1, P0, P1):
 	yolo = YOLO()
 
 	cap0 = cv2.VideoCapture(input_stream0)
-	cap1 = cv2.VideoCapture(input_stream1)
+	# cap1 = cv2.VideoCapture(input_stream1)
 	cv2.namedWindow('YOLO Stereo', cv2.WINDOW_NORMAL | cv2.WINDOW_GUI_EXPANDED)
 
 	centroid0, centroid1 = (0,0), (0,0)
+	p3d = []
  
 	while True:
 		ret0, frame0 = cap0.read()
-		ret1, frame1 = cap1.read()
-		# ret1, frame1 = ret0, frame0
+		# ret1, frame1 = cap1.read()
+		ret1, frame1 = ret0, frame0
 		
 		if not (ret0 and ret1):
 			break
 		
-		_, _, person_bboxes_0 = yolo.find(frame0)
-		_, _, person_bboxes_1 = yolo.find(frame1)
+		ball_bboxes_0, _, _ = yolo.find(frame0)
+		ball_bboxes_1, _, _ = yolo.find(frame1)
 		
-		
-		for bbox in person_bboxes_0:
-			frame0[:] = bbv.draw_rectangle(frame0, bbox, (0,255,0))
-			x_min, y_min, x_max, y_max = bbox
+		if ball_bboxes_0 and ball_bboxes_1:
+			print(ball_bboxes_0)
+			frame0[:] = bbv.draw_rectangle(frame0, ball_bboxes_0, (0,255,0))
+			x_min, y_min, x_max, y_max = ball_bboxes_0
 			centroid0 = ((x_min + x_max)//2, (y_min + y_max)//2)
-			break
-			
-		for bbox in person_bboxes_1:
-			frame1[:] = bbv.draw_rectangle(frame1, bbox, (0,255,0))
-			x_min, y_min, x_max, y_max = bbox
+				
+			frame1[:] = bbv.draw_rectangle(frame1, ball_bboxes_1, (0,255,0))
+			x_min, y_min, x_max, y_max = ball_bboxes_1
 			centroid1 = ((x_min + x_max)//2, (y_min + y_max)//2)
-			break
-   
-		#calculate 3d position
-		p3d = DLT(P0, P1, centroid0, centroid1) #calculate 3d position of keypoint
-			
-		print(f"Selected coordinates: {centroid0}, {centroid1}")
-		print(f"3D coordinates: {p3d}\n")
+	
+			#calculate 3d position
+			p3d = DLT(P0, P1, centroid0, centroid1) #calculate 3d position of keypoint
+				
+			print(f"Selected coordinates: {centroid0}, {centroid1}")
+			print(f"3D coordinates: {p3d}\n")
 			
 		img = np.concatenate((frame0, frame1), axis=1)
   
