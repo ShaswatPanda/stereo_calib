@@ -9,6 +9,7 @@ import time
 from utils import DLT, get_projection_matrix, write_keypoints_to_disk
 from threaded_video import WebcamStreamSynced
 
+video = True
 ip_cam = False
 sync = False
 frame_shape = [1280, 720]
@@ -34,32 +35,16 @@ def run_mp(input_stream1, input_stream2, P0, P1):
     
     #input video stream
     #set camera resolutions
-    if sync:
-        streamer_left = WebcamStreamSynced(input_stream1)
-        atexit.register(streamer_left.stop)
-        # streamer_right = ThreadedCamera(calibration_settings[camera1_name])
-        streamer_right = WebcamStreamSynced(input_stream2)
-        atexit.register(streamer_right.stop)
-        
-        streamer_left.capture.set(3, width)
-        streamer_left.capture.set(4, height)
-        streamer_right.capture.set(3, width)
-        streamer_right.capture.set(4, height)
-    
-        streamer_left.start()
-        streamer_right.start()
-        time.sleep(1)
+    cap0 = cv2.VideoCapture(input_stream1)
+    if ip_cam:
+        caps = [cap0]
     else:
-        cap0 = cv2.VideoCapture(input_stream1)
-        if ip_cam:
-            caps = [cap0]
-        else:
-            cap1 = cv2.VideoCapture(input_stream2)
-            caps = [cap0, cap1]
-        # set camera resolution if using webcam to 1280x720. Any bigger will cause some lag for hand detection
-        for cap in caps:
-            cap.set(3, frame_shape[1])
-            cap.set(4, frame_shape[0])
+        cap1 = cv2.VideoCapture(input_stream2)
+        caps = [cap0, cap1]
+    # set camera resolution if using webcam to 1280x720. Any bigger will cause some lag for hand detection
+    for cap in caps:
+        cap.set(3, frame_shape[1])
+        cap.set(4, frame_shape[0])
     
 
     #containers for detected keypoints for each camera. These are filled at each frame.
@@ -67,75 +52,40 @@ def run_mp(input_stream1, input_stream2, P0, P1):
     kpts_cam0 = []
     kpts_cam1 = []
     kpts_3d = []
-    
-    start = False
-    cooldown_time = 100
-    cooldown = cooldown_time
 
+    cooldown_time = 100
+    
     cv2.namedWindow('img', cv2.WINDOW_NORMAL)
     frame_number = 0
-    t1 = time.time()
-    fps = None
-    
-    
-    while True:
+    take_coords = True
 
-        #read frames from stream
-        if sync:
-            ret0, frame0 = streamer_left.grab_frame(frame_number=frame_number)
-            ret1, frame1 = streamer_right.grab_frame(frame_number=frame_number)
-        else:
+    if video:
+        while True:
             ret0, frame0 = cap0.read()
-            if not ip_cam:
-                ret1, frame1 = cap1.read()
-            else:
-                url = "http://192.168.1.2:8080/shot.jpg"
-                img_resp = requests.get(url)
-                img_arr = np.array(bytearray(img_resp.content), dtype=np.uint8)
-                img = cv2.imdecode(img_arr, -1)
-                ret1, frame1 = True, img
-
-
-        if not ret0 or not ret1: 
-            print('Cameras not returning video data. Exiting...')
-            break
-
-        if not sync:
-            """
-            crop to 720x720.
-            Note: camera calibration parameters are set to this resolution.If you change this, make sure to also change camera intrinsic parameters
-            """
-            if frame0.shape[1] != 720:
-                frame0 = frame0[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
-                frame1 = frame1[:,frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2]
+            ret1, frame1 = cap1.read()
             
-            if ip_cam: 
-                frame1 = frame1[frame_shape[1]//2 - frame_shape[0]//2:frame_shape[1]//2 + frame_shape[0]//2, :, :]
-
-        combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
-
-        if not start:
-            cv2.putText(combined_frame0_frame_1, "Make sure both cameras can see the calibration pattern well", (30,30), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,0,255), 2)
-            cv2.putText(combined_frame0_frame_1, "Press SPACEBAR to start collection frames", (30,50), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,0,255), 2)
+            if not ret0 or not ret1:
+                break
+            
+            combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
         
-        if start:
-            cooldown -= 1
-            cv2.putText(combined_frame0_frame_1, "Cooldown: " + str(cooldown), (30,30), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
-            
-            coords = []            
-            if cooldown <= 0:                
+            if take_coords:        
+                coords = []            
+                    
                 def click_event(event, x, y, flags, params):
                     if event == cv2.EVENT_LBUTTONDOWN:
-                        if x < img.shape[1] // 2:
-                            coords.append((x,y))
-                        else:
-                            coords.append((x - img.shape[1] // 2,y))
-                                                        
-                        cv2.putText(img, f'({coords[-1][0]},{coords[-1][0]})',(x,y), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2) 
-                        cv2.circle(img, (x,y), 5, (0,0,255), -1)
-                        cv2.imshow('Select Coordinates', img)
-                
-                cv2.imshow('Select Coordinates', img)
+                        (x_old, y_old) = (x,y)
+                        if not x < combined_frame0_frame_1.shape[1] // 2:
+                            (x,y) = (x - combined_frame0_frame_1.shape[1] // 2,y)
+                        coords.append((x,y))
+                        
+                        cv2.circle(combined_frame0_frame_1, (x_old,y_old), 5, (0,0,255), -1)
+                        cv2.putText(combined_frame0_frame_1, f"({x},{y})",(x_old,y_old), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)
+                  
+                        cv2.imshow('Select Coordinates', combined_frame0_frame_1)
+                        
+                cv2.namedWindow('Select Coordinates',  cv2.WINDOW_NORMAL)
+                cv2.imshow('Select Coordinates', combined_frame0_frame_1)
                 cv2.setMouseCallback('Select Coordinates', click_event)
                 cv2.waitKey(0)
                 cv2.destroyWindow('Select Coordinates')
@@ -151,44 +101,77 @@ def run_mp(input_stream1, input_stream2, P0, P1):
                     
                 print(f"Selected coordinates: {coords}")
                 print(f"3D coordinates: {p3d}\n")
-        
-                cooldown = cooldown_time
-                start = False
+                
+                take_coords = False
                 pass
+        
 
-        # # cv2.imshow('cam1', frame1)
-        # # cv2.imshow('cam0', frame0)
-        if sync:
-            cv2.putText(combined_frame0_frame_1, f"FRAME - 0:{streamer_left.frame_number}    1:{streamer_right.frame_number}    Delta: {streamer_left.frame_number - streamer_right.frame_number}", (30,80), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
-        cv2.putText(combined_frame0_frame_1, f"FRAME NUMBER: {frame_number}", (30,110), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
-        cv2.putText(combined_frame0_frame_1, f"FPS: {fps}", (30,140), cv2.FONT_HERSHEY_COMPLEX, 0.5, (0,255,0), 2)
-        cv2.imshow('img', combined_frame0_frame_1)
+            cv2.putText(combined_frame0_frame_1, f"Selected coordinates: {coords}",(50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2)         
+            cv2.putText(combined_frame0_frame_1, f"3D coordinates: {p3d}",(50,80), cv2.FONT_HERSHEY_SIMPLEX, 0.75, (0, 255, 0), 2) 
+            cv2.imshow('img', combined_frame0_frame_1)
+            k = cv2.waitKey(1)
+            if k == ord('s'):
+                print("Getting coords...")
+                take_coords = True
+            if k == ord('q'):
+                break
+            
 
-        frame_number += 1
-        if frame_number % 100 == 0:
-            t2 = time.time()
-            time_taken = t2 - t1
-            fps = round(100/time_taken, 2)
-            print(f"Real-time FPS: {fps}")
-            t1 = t2
+            
 
-        k = cv2.waitKey(1)
-        if k & 0xFF == 27: break #27 is ESC key.
-        if k == ord('q'): break #q
-        if k == 32:
-            #Press spacebar to start data collection
-            start = True
-    
-    if sync:
-        streamer_left.stop()
-        streamer_right.stop()   
     else:
-        for cap in caps:
-            cap.release()
-    cv2.destroyAllWindows()
+        ret0, frame0 = True, cv2.imread("../Umbrella-perfect/im0.png")
+        ret1, frame1 = True, cv2.imread("../Umbrella-perfect/im1.png")
+        
+        combined_frame0_frame_1 = np.concatenate((frame0, cv2.resize(frame1, (frame0.shape[1], frame0.shape[0]))), axis=1)
+        
+        if take_coords:        
+            coords = []            
+                
+            def click_event(event, x, y, flags, params):
+                if event == cv2.EVENT_LBUTTONDOWN:
+                    (x_old, y_old) = (x,y)
+                    if not x < combined_frame0_frame_1.shape[1] // 2:
+                        (x,y) = (x - combined_frame0_frame_1.shape[1] // 2,y)
+                    coords.append((x,y))
+                    
+                    cv2.circle(combined_frame0_frame_1, (x_old,y_old), 15, (0,0,255), -1)
+                    cv2.putText(combined_frame0_frame_1, f"({x},{y})",(x_old,y_old), cv2.FONT_HERSHEY_SIMPLEX, 3, (0, 255, 0), 10)
+                                                
+                    cv2.imshow('Select Coordinates', combined_frame0_frame_1)
+                    
+            cv2.namedWindow('Select Coordinates',  cv2.WINDOW_NORMAL)
+            cv2.imshow('Select Coordinates', combined_frame0_frame_1)
+            cv2.setMouseCallback('Select Coordinates', click_event)
+            cv2.waitKey(0)
+            cv2.destroyWindow('Select Coordinates')
+            
+            ball_coords_frame_0 = coords[0]
+            ball_coords_frame_1 = coords[1]
 
+            #calculate 3d position
+            if ball_coords_frame_0[0] == -1 or ball_coords_frame_1[0] == -1:
+                p3d = [-1, -1, -1]
+            else:
+                p3d = DLT(P0, P1, ball_coords_frame_0, ball_coords_frame_1) #calculate 3d position of keypoint
+                
+            print(f"Selected coordinates: {coords}")
+            print(f"3D coordinates: {p3d}\n")
+            
+            take_coords = False
+            pass
+        
 
-    return np.array(kpts_cam0), np.array(kpts_cam1), np.array(kpts_3d)
+        cv2.putText(combined_frame0_frame_1, f"Selected coordinates: {coords}",(150,150), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0), 10)         
+        cv2.putText(combined_frame0_frame_1, f"3D coordinates: {p3d}",(150,300), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0), 10) 
+        cv2.imshow('img', combined_frame0_frame_1)
+        k = cv2.waitKey(0)
+        if k == ord('s'):
+            print("Getting coords...")
+            take_coords = True
+
+    # return np.array(kpts_cam0), np.array(kpts_cam1), np.array(kpts_3d)
+
 
 if __name__ == '__main__':
 
@@ -204,9 +187,10 @@ if __name__ == '__main__':
     P0 = get_projection_matrix(0)
     P1 = get_projection_matrix(1)
 
-    kpts_cam0, kpts_cam1, kpts_3d = run_mp(input_stream1, input_stream2, P0, P1)
+    # kpts_cam0, kpts_cam1, kpts_3d = run_mp(input_stream1, input_stream2, P0, P1)
+    run_mp(input_stream1, input_stream2, P0, P1)
 
-    #this will create keypoints file in current working folder
-    write_keypoints_to_disk('./camera_parameters/kpts_cam0.dat', kpts_cam0)
-    write_keypoints_to_disk('./camera_parameters/kpts_cam1.dat', kpts_cam1)
-    write_keypoints_to_disk('./camera_parameters/kpts_3d.dat', kpts_3d)
+    # #this will create keypoints file in current working folder
+    # write_keypoints_to_disk('./camera_parameters/kpts_cam0.dat', kpts_cam0)
+    # write_keypoints_to_disk('./camera_parameters/kpts_cam1.dat', kpts_cam1)
+    # write_keypoints_to_disk('./camera_parameters/kpts_3d.dat', kpts_3d)
