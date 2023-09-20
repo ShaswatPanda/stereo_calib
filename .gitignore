@@ -4,8 +4,11 @@
 *.mp4
 *.avi
 *.pyc
+*.pt
+*.pth
 
 __pycache__
 camera_parameters/*
 frames/*
 videos/*
+weights/*
