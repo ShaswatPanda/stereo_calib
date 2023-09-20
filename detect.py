@@ -6,7 +6,7 @@ import os
 import yaml
 import atexit
 import time
-from utils import DLT, get_projection_matrix, write_keypoints_to_disk
+from util import DLT, get_projection_matrix, write_keypoints_to_disk
 from threaded_video import WebcamStreamSynced
 
 video = True
@@ -28,6 +28,7 @@ def parse_calibration_settings_file(filename):
     if 'camera0' not in calibration_settings.keys():
         print('camera0 key was not found in the settings file. Check if correct calibration_settings.yaml file was passed')
         quit()
+    return calibration_settings
 
 def run_mp(input_stream1, input_stream2, P0, P1):
     width = calibration_settings['frame_width']
