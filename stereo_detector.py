@@ -14,6 +14,8 @@ def main(input_stream0, input_stream1, P0, P1):
 
 	centroid0, centroid1 = (0,0), (0,0)
 	p3d = []
+	detect_ball = False
+	detect_persons = True
  
 	while True:
 		ret0, frame0 = cap0.read()
@@ -23,24 +25,37 @@ def main(input_stream0, input_stream1, P0, P1):
 		if not (ret0 and ret1):
 			break
 		
-		ball_bboxes_0, _, _ = yolo.find(frame0)
-		ball_bboxes_1, _, _ = yolo.find(frame1)
+		ball_bboxes_0, _, person_bboxes_0 = yolo.find(frame0)
+		ball_bboxes_1, _, person_bboxes_1 = yolo.find(frame1)
+
+		if detect_ball:
+			if ball_bboxes_0 and ball_bboxes_1:
+				print(ball_bboxes_0)
+				frame0[:] = bbv.draw_rectangle(frame0, ball_bboxes_0, (0,255,0))
+				x_min, y_min, x_max, y_max = ball_bboxes_0
+				centroid0 = ((x_min + x_max)//2, (y_min + y_max)//2)
+					
+				frame1[:] = bbv.draw_rectangle(frame1, ball_bboxes_1, (0,255,0))
+				x_min, y_min, x_max, y_max = ball_bboxes_1
+				centroid1 = ((x_min + x_max)//2, (y_min + y_max)//2)
+		if detect_persons:
+			for bbox in person_bboxes_0:
+				frame0[:] = bbv.draw_rectangle(frame0, bbox, (0,255,0))
+				x_min, y_min, x_max, y_max = bbox
+				centroid0 = ((x_min + x_max)//2, (y_min + y_max)//2)
+				break
+				
+			for bbox in person_bboxes_1:
+				frame1[:] = bbv.draw_rectangle(frame1, bbox, (0,255,0))
+				x_min, y_min, x_max, y_max = bbox
+				centroid1 = ((x_min + x_max)//2, (y_min + y_max)//2)
+				break
 		
-		if ball_bboxes_0 and ball_bboxes_1:
-			print(ball_bboxes_0)
-			frame0[:] = bbv.draw_rectangle(frame0, ball_bboxes_0, (0,255,0))
-			x_min, y_min, x_max, y_max = ball_bboxes_0
-			centroid0 = ((x_min + x_max)//2, (y_min + y_max)//2)
-				
-			frame1[:] = bbv.draw_rectangle(frame1, ball_bboxes_1, (0,255,0))
-			x_min, y_min, x_max, y_max = ball_bboxes_1
-			centroid1 = ((x_min + x_max)//2, (y_min + y_max)//2)
-	
-			#calculate 3d position
-			p3d = DLT(P0, P1, centroid0, centroid1) #calculate 3d position of keypoint
-				
-			print(f"Selected coordinates: {centroid0}, {centroid1}")
-			print(f"3D coordinates: {p3d}\n")
+		#calculate 3d position
+		p3d = DLT(P0, P1, centroid0, centroid1) #calculate 3d position of keypoint
+			
+		print(f"Selected coordinates: {centroid0}, {centroid1}")
+		print(f"3D coordinates: {p3d}\n")
 			
 		img = np.concatenate((frame0, frame1), axis=1)
   
